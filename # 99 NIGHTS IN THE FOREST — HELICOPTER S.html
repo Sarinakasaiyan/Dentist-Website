@@ -1,0 +1,527 @@
+# 99 NIGHTS IN THE FOREST — HELICOPTER SURVIVAL
+
+Save this code as `index.html` and open it in Chrome.
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>99 Nights in the Forest - Helicopter Survival</title>
+
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: #07110c;
+    font-family: Arial, sans-serif;
+    color: white;
+    overflow: hidden;
+}
+
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+}
+
+#hud {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    background: rgba(0,0,0,0.75);
+    border: 1px solid #536d46;
+    border-radius: 12px;
+    padding: 15px;
+    min-width: 220px;
+}
+
+#hud h2 { color: #a9ff6b; margin-bottom: 8px; }
+#hud p { margin: 6px 0; font-size: 14px; }
+
+#help {
+    position: absolute;
+    bottom: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.8);
+    padding: 12px 20px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.8;
+}
+
+#message {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    color: #ffe98a;
+    font-weight: bold;
+    text-shadow: 0 0 10px black;
+}
+
+#start {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(#020711dd, #051509ee);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    z-index: 5;
+}
+
+#start h1 {
+    font-size: clamp(30px, 5vw, 65px);
+    color: #b7ff7c;
+    text-shadow: 0 0 25px #52ff00;
+}
+
+#start p {
+    margin: 20px;
+    max-width: 500px;
+    line-height: 1.8;
+}
+
+button {
+    padding: 15px 35px;
+    background: #71c936;
+    border: 0;
+    border-radius: 10px;
+    color: #07110a;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover { background: #a1ff63; }
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+    <h2>🌲 FOREST SURVIVAL</h2>
+    <p>🌙 Night: <span id="night">1</span> / 99</p>
+    <p>❤️ Health: <span id="health">100</span></p>
+    <p>🪵 Wood: <span id="wood">0</span></p>
+    <p>🔥 Campfire: <span id="fire">100</span>%</p>
+    <p>🚁 Helicopter: <span id="heli">READY</span></p>
+    <p>📍 Mission: Survive the forest</p>
+</div>
+
+<div id="message">SURVIVE THE NIGHT</div>
+
+<div id="help">
+    WASD / ARROWS — Move<br>
+    E — Enter / Exit Helicopter<br>
+    SPACE — Attack / Collect Wood<br>
+    SHIFT — Run<br>
+    H — Fly Helicopter
+</div>
+
+<div id="start">
+    <h1>99 NIGHTS IN THE FOREST</h1>
+    <p>
+        Survive the dangerous forest, protect your campfire,
+        collect wood, and discover your helicopter.
+        Can you survive all 99 nights?
+    </p>
+    <button onclick="startGame()">START SURVIVAL</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let W, H;
+
+function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+const keys = {};
+
+window.addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
+
+    if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key))
+        e.preventDefault();
+
+    if (!e.repeat && e.key.toLowerCase() === "e") toggleHelicopter();
+    if (!e.repeat && e.key.toLowerCase() === "h") helicopterMode = !helicopterMode;
+    if (!e.repeat && e.key === " ") interact();
+});
+
+window.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+});
+
+let started = false;
+let helicopterMode = false;
+let inHelicopter = false;
+let night = 1;
+let health = 100;
+let wood = 0;
+let fire = 100;
+let gameTime = 0;
+
+const player = { x: 0, y: 0, angle: 0 };
+
+const helicopter = {
+    x: 180,
+    y: 100,
+    angle: 0,
+    rotor: 0
+};
+
+let trees = [];
+let monsters = [];
+
+function rand(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+function generateWorld() {
+    trees = [];
+    monsters = [];
+
+    for (let i = 0; i < 260; i++) {
+        trees.push({
+            x: rand(-1800, 1800),
+            y: rand(-1800, 1800),
+            size: rand(30, 65)
+        });
+    }
+
+    for (let i = 0; i < 12; i++) {
+        monsters.push({
+            x: rand(-1000, 1000),
+            y: rand(-1000, 1000),
+            speed: rand(0.5, 1.2),
+            alive: true
+        });
+    }
+
+    trees.push({ x: 200, y: 100, size: 45 });
+}
+
+function startGame() {
+    document.getElementById("start").style.display = "none";
+    started = true;
+    generateWorld();
+    requestAnimationFrame(loop);
+}
+
+function toggleHelicopter() {
+    if (!started) return;
+
+    if (inHelicopter) {
+        inHelicopter = false;
+        player.x = helicopter.x + 50;
+        player.y = helicopter.y;
+    } else {
+        let d = Math.hypot(player.x - helicopter.x, player.y - helicopter.y);
+
+        if (d < 120) {
+            inHelicopter = true;
+            helicopterMode = true;
+        }
+    }
+}
+
+function interact() {
+    if (!started) return;
+
+    if (!inHelicopter) {
+        wood += 1;
+        fire = Math.min(100, fire + 3);
+    }
+}
+
+function drawGround() {
+    ctx.fillStyle = "#173d23";
+    ctx.fillRect(0, 0, W, H);
+
+    const grid = 100;
+
+    for (let x = 0; x < W; x += grid) {
+        for (let y = 0; y < H; y += grid) {
+            const noise = Math.sin(x * 0.03 + y * 0.04);
+            ctx.fillStyle = noise > 0 ? "#1a4225" : "#193b21";
+            ctx.fillRect(x, y, grid, grid);
+        }
+    }
+}
+
+function worldToScreen(x, y) {
+    return {
+        x: x - player.x + W / 2,
+        y: y - player.y + H / 2
+    };
+}
+
+function drawTree(tree) {
+    const p = worldToScreen(tree.x, tree.y);
+
+    if (p.x < -100 || p.x > W + 100 || p.y < -100 || p.y > H + 100)
+        return;
+
+    ctx.fillStyle = "#513522";
+    ctx.fillRect(p.x - 8, p.y, 16, tree.size);
+
+    ctx.fillStyle = "#0a2612";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y - tree.size * 0.35, tree.size, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#194d26";
+    ctx.beginPath();
+    ctx.arc(p.x - 10, p.y - tree.size * 0.45, tree.size * 0.75, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#24652f";
+    ctx.beginPath();
+    ctx.arc(p.x + 10, p.y - tree.size * 0.65, tree.size * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawCampfire() {
+    const p = worldToScreen(0, 0);
+
+    ctx.save();
+
+    ctx.shadowBlur = 35;
+    ctx.shadowColor = "#ff6600";
+
+    ctx.fillStyle = "#ff9c25";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 30 + Math.sin(gameTime * 5) * 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = "#ffdf60";
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - 35);
+    ctx.lineTo(p.x - 15, p.y + 10);
+    ctx.lineTo(p.x + 12, p.y + 10);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = "#542b15";
+    ctx.fillRect(p.x - 25, p.y + 12, 50, 8);
+
+    ctx.restore();
+}
+
+function drawPlayer() {
+    const p = worldToScreen(player.x, player.y);
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(player.angle);
+
+    ctx.fillStyle = "#d9c59b";
+    ctx.fillRect(-12, -15, 24, 30);
+
+    ctx.fillStyle = "#3a76db";
+    ctx.fillRect(-10, -5, 20, 18);
+
+    ctx.fillStyle = "#ffdb9c";
+    ctx.beginPath();
+    ctx.arc(0, -17, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#202020";
+    ctx.fillRect(-8, -24, 16, 5);
+
+    ctx.restore();
+}
+
+function drawHelicopter() {
+    const p = worldToScreen(helicopter.x, helicopter.y);
+
+    helicopter.rotor += 0.3;
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(helicopter.angle);
+
+    ctx.fillStyle = "#1d4e8a";
+    ctx.fillRect(-40, -20, 80, 40);
+
+    ctx.fillStyle = "#68d8ff";
+    ctx.fillRect(-22, -15, 30, 30);
+
+    ctx.fillStyle = "#152b42";
+    ctx.fillRect(28, -8, 55, 16);
+
+    ctx.fillStyle = "#ff3b3b";
+    ctx.fillRect(78, -5, 15, 10);
+
+    ctx.strokeStyle = "#171717";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, -90);
+    ctx.moveTo(-75, -90);
+    ctx.lineTo(75, -90);
+    ctx.stroke();
+
+    ctx.rotate(helicopter.rotor);
+
+    ctx.strokeStyle = "#d7e4e8";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-130, 0);
+    ctx.lineTo(130, 0);
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+function drawMonster(monster) {
+    if (!monster.alive) return;
+
+    const p = worldToScreen(monster.x, monster.y);
+
+    ctx.fillStyle = "#701515";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ff2828";
+    ctx.fillRect(p.x - 10, p.y - 5, 5, 5);
+    ctx.fillRect(p.x + 5, p.y - 5, 5, 5);
+}
+
+function update() {
+    gameTime += 0.016;
+
+    let speed = keys["shift"] ? 5 : 3;
+
+    if (inHelicopter) {
+        speed = helicopterMode ? 8 : 4;
+
+        if (keys["w"] || keys["arrowup"]) helicopter.y -= speed;
+        if (keys["s"] || keys["arrowdown"]) helicopter.y += speed;
+        if (keys["a"] || keys["arrowleft"]) helicopter.x -= speed;
+        if (keys["d"] || keys["arrowright"]) helicopter.x += speed;
+
+        player.x = helicopter.x;
+        player.y = helicopter.y;
+    } else {
+        if (keys["w"] || keys["arrowup"]) player.y -= speed;
+        if (keys["s"] || keys["arrowdown"]) player.y += speed;
+        if (keys["a"] || keys["arrowleft"]) player.x -= speed;
+        if (keys["d"] || keys["arrowright"]) player.x += speed;
+    }
+
+    if (keys["w"]) player.angle = 0;
+    if (keys["s"]) player.angle = Math.PI;
+    if (keys["a"]) player.angle = -Math.PI / 2;
+    if (keys["d"]) player.angle = Math.PI / 2;
+
+    monsters.forEach(monster => {
+        if (!monster.alive) return;
+
+        let dx = player.x - monster.x;
+        let dy = player.y - monster.y;
+        let d = Math.hypot(dx, dy);
+
+        if (d < 650 && d > 5) {
+            monster.x += dx / d * monster.speed;
+            monster.y += dy / d * monster.speed;
+        }
+
+        if (d < 35 && !inHelicopter) {
+            health -= 0.08;
+        }
+    });
+
+    fire -= 0.005;
+
+    if (gameTime > night * 30) {
+        night++;
+
+        if (night > 99) {
+            night = 99;
+            document.getElementById("message").textContent =
+                "🏆 YOU SURVIVED 99 NIGHTS!";
+        }
+    }
+
+    if (health <= 0) {
+        health = 0;
+        started = false;
+        document.getElementById("message").textContent = "GAME OVER";
+        document.getElementById("start").style.display = "flex";
+        document.querySelector("#start h1").textContent = "GAME OVER";
+        document.querySelector("#start button").textContent = "RESTART";
+    }
+
+    document.getElementById("night").textContent = night;
+    document.getElementById("health").textContent = Math.floor(health);
+    document.getElementById("wood").textContent = wood;
+    document.getElementById("fire").textContent = Math.floor(fire);
+    document.getElementById("heli").textContent =
+        inHelicopter ? "FLYING 🚁" : "READY";
+}
+
+function draw() {
+    drawGround();
+
+    trees.sort((a, b) => a.y - b.y);
+    trees.forEach(drawTree);
+
+    drawCampfire();
+
+    monsters.forEach(drawMonster);
+
+    drawHelicopter();
+
+    if (!inHelicopter) drawPlayer();
+
+    // Night darkness overlay
+    let darkness = 0.25 + Math.abs(Math.sin(gameTime * 0.05)) * 0.45;
+
+    ctx.fillStyle = `rgba(0, 0, 25, ${darkness})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // Campfire light
+    const firePos = worldToScreen(0, 0);
+
+    const light = ctx.createRadialGradient(
+        firePos.x, firePos.y, 10,
+        firePos.x, firePos.y, 230
+    );
+
+    light.addColorStop(0, "rgba(255,120,20,0.30)");
+    light.addColorStop(1, "rgba(255,120,20,0)");
+
+    ctx.fillStyle = light;
+    ctx.fillRect(0, 0, W, H);
+}
+
+function loop() {
+    if (!started) return;
+
+    update();
+    draw();
+
+    requestAnimationFrame(loop);
+}
+</script>
+
+</body>
+</html>
+```
